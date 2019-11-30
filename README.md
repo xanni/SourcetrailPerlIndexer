@@ -27,22 +27,23 @@ $ perl run.pl --source-file-path=path/to/your/perl/file.pl --database-file-path=
 
 This will index the source file and store the data to the provided database filepath. If the database does not exist, an empty database will be created.
 
-You can access an overview that lists all available command line parameters by providing the `-h` argument, which will print the following output to your console:
+You can access an overview that lists all available command line parameters by providing no arguments, which will print the following output to your console:
 ```
-$ perl run.pl -h
+$ perl run.pl
 Usage:
-    run.pl [-h] --database-file-path DATABASE_FILE_PATH --source-file-path
-    SOURCE_FILE_PATH [--clear] [--verbose]
+    run.pl [--help] [--man] [--version]
+    --database-file-path=DATABASE_FILE_PATH
+    --source-file-path=SOURCE_FILE_PATH [--clear] [--verbose]
 
-    Index a Perl source file and store the indexed data to a Sourcetrail
-    database file.
+     Options:
 
-Options:
-      --clear                 clear the database before indexing
-      --database-file-path    path to the generated Sourcetrail database file
-      --source-file-path      path to the source file to index
-      --verbose               enable verbose console output
-      --version               print version of this program
+      --help                print brief help message and exit
+      --man                 show full documentation and exit
+      --version             print version of this program and exit
+      --database-file-path  path to the generated Sourcetrail database file (required)
+      --source-file-path    path to the generated Sourcetrail database file (required)
+      --clear               clear the database before indexing
+      --verbose             enable verbose console output
 ```
 
 
