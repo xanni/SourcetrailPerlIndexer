@@ -5,6 +5,7 @@ use v5.10;
 use strict;
 use warnings;
 
+use Carp;
 use File::Spec;
 use FindBin;
 use Getopt::Long qw(:config no_ignore_case);
@@ -13,6 +14,12 @@ use Pod::Usage;
 use lib $FindBin::Bin;
 use _version qw($VERSION);
 use indexer qw(:all);
+use sourcetraildb;
+
+sub sourcetrail_fatal {
+	say 'ERROR: ' . sourcetraildb::getLastError();
+	exit(2);
+}
 
 my ( $clear, $database_file_path, $source_file_path, $verbose );
 
@@ -31,6 +38,19 @@ exit(2) unless is_sourcetraildb_version_compatible();
 
 $database_file_path = File::Spec->rel2abs($database_file_path);
 $source_file_path   = File::Spec->rel2abs($source_file_path);
+
+sourcetrail_fatal() unless sourcetraildb::open($database_file_path);
+
+if ($clear) {
+	say 'INFO: Clearing database...' if $verbose;
+	sourcetrail_fatal() unless sourcetraildb::clear();
+	say 'INFO: Clearing done.' if $verbose;
+}
+
+sourcetraildb::beginTransaction();
+index_source_file( $source_file_path, $verbose );
+sourcetraildb::commitTransaction();
+sourcetrail_fatal() unless sourcetraildb::close();
 
 __END__
 

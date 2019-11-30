@@ -10,7 +10,7 @@ use Exporter qw(import);
 use _version qw($SOURCETRAIL_DB_VERSION);
 use sourcetraildb;
 
-our @EXPORT_OK = qw(is_sourcetraildb_version_compatible);
+our @EXPORT_OK = qw(index_source_file is_sourcetraildb_version_compatible);
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 
 sub is_sourcetraildb_version_compatible {
@@ -24,5 +24,9 @@ sub is_sourcetraildb_version_compatible {
 
 	return;
 } ## end sub is_sourcetraildb_version_compatible
+
+sub index_source_file {
+	return;
+}
 
 1;
