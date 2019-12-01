@@ -41,21 +41,38 @@ sub index_source_file {
 	sourcetraildb::recordFileLanguage( $file_id, 'perl' );
 
 	$document->index_locations();
-#	PPI::Dumper->new( $document, whitespace => 0 )->print();
+
+	#	PPI::Dumper->new( $document, whitespace => 0 )->print();
 
 	my $package = '';
 	foreach my $node ( $document->schildren() ) {
-		next if $node->class ne 'PPI::Statement::Package';
-		my $name = $node->schild(1);
-		$package = $name->content eq 'main' ? '' : $name->content;
-		my %symbol
-			= ( name_delimiter => '::', name_elements => [ { prefix => '', name => $package, postfix => '', } ] );
-		my $package_id = sourcetraildb::recordSymbol( encode_json( \%symbol ) );
-		sourcetraildb::recordSymbolDefinitionKind( $package_id, $sourcetraildb::DEFINITION_EXPLICIT );
-		sourcetraildb::recordSymbolKind( $package_id, $sourcetraildb::SYMBOL_PACKAGE );
-		my $next_token = $name->next_token;
-		sourcetraildb::recordSymbolLocation( $package_id, $file_id, $name->line_number, $name->column_number,
-			$next_token->line_number, $next_token->column_number - 1 );
+		if ( $node->class eq 'PPI::Statement::Include' ) {
+			my $kind = $node->schild(0) eq 'use' ? $sourcetraildb::REFERENCE_IMPORT : $sourcetraildb::REFERENCE_INCLUDE;
+			my $name = $node->schild(1);
+			next if $name->class ne 'PPI::Token::Word';
+			my %symbol = (
+				name_delimiter => '::',
+				name_elements  => [ { prefix => '', name => $name->content, postfix => '', } ]
+			);
+			my $name_id = sourcetraildb::recordSymbol( encode_json( \%symbol ) );
+			sourcetraildb::recordReference( $file_id, $name_id, $kind );
+			my $next_token = $name->next_token;
+			sourcetraildb::recordReferenceLocation( $name_id, $file_id, $name->line_number, $name->column_number,
+				$next_token->line_number, $next_token->column_number - 1 );
+		} ## end if ( $node->class eq 'PPI::Statement::Include')
+
+		if ( $node->class eq 'PPI::Statement::Package' ) {
+			my $name = $node->schild(1);
+			$package = $name->content eq 'main' ? '' : $name->content;
+			my %symbol
+				= ( name_delimiter => '::', name_elements => [ { prefix => '', name => $package, postfix => '', } ] );
+			my $package_id = sourcetraildb::recordSymbol( encode_json( \%symbol ) );
+			sourcetraildb::recordSymbolDefinitionKind( $package_id, $sourcetraildb::DEFINITION_EXPLICIT );
+			sourcetraildb::recordSymbolKind( $package_id, $sourcetraildb::SYMBOL_PACKAGE );
+			my $next_token = $name->next_token;
+			sourcetraildb::recordSymbolLocation( $package_id, $file_id, $name->line_number, $name->column_number,
+				$next_token->line_number, $next_token->column_number - 1 );
+		} ## end if ( $node->class eq 'PPI::Statement::Package')
 	} ## end foreach my $node ( $document->schildren() )
 
 	return;
