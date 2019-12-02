@@ -9,12 +9,18 @@ use Exporter qw(import);
 use JSON;
 use PPI;
 use PPI::Dumper;
+use Readonly;
 
 use _version qw($SOURCETRAIL_DB_VERSION);
 use sourcetraildb;
 
 our @EXPORT_OK = qw(index_source_file is_sourcetraildb_version_compatible);
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
+
+Readonly my %PRAGMAS => map { $_ => 1 }
+	qw(attributes autodie autouse base bigint bignum bigrat blib bytes charnames constant diagnostics encoding feature
+	fields filetest if integer less lib locale more open ops overload overloading parent re sigtrap sort strict subs
+	threads threads::shared utf8 vars vmsish warnings warnings::register);
 
 sub is_sourcetraildb_version_compatible {
 	my $db_version = eval { sourcetraildb::getVersionString() };
@@ -42,20 +48,21 @@ sub index_source_file {
 
 	$document->index_locations();
 
-	#	PPI::Dumper->new( $document, whitespace => 0 )->print();
+#	PPI::Dumper->new( $document, whitespace => 0 )->print();
 
 	my $package = '';
+	my $package_id;
 	foreach my $node ( $document->schildren() ) {
 		if ( $node->class eq 'PPI::Statement::Include' ) {
 			my $kind = $node->schild(0) eq 'use' ? $sourcetraildb::REFERENCE_IMPORT : $sourcetraildb::REFERENCE_INCLUDE;
 			my $name = $node->schild(1);
-			next if $name->class ne 'PPI::Token::Word';
+			next if $name->class ne 'PPI::Token::Word' || $PRAGMAS{$name->content};
 			my %symbol = (
 				name_delimiter => '::',
 				name_elements  => [ { prefix => '', name => $name->content, postfix => '', } ]
 			);
 			my $name_id = sourcetraildb::recordSymbol( encode_json( \%symbol ) );
-			sourcetraildb::recordReference( $file_id, $name_id, $kind );
+			sourcetraildb::recordReference( $package_id || $file_id, $name_id, $kind );
 			my $next_token = $name->next_token;
 			sourcetraildb::recordReferenceLocation( $name_id, $file_id, $name->line_number, $name->column_number,
 				$next_token->line_number, $next_token->column_number - 1 );
@@ -66,7 +73,7 @@ sub index_source_file {
 			$package = $name->content eq 'main' ? '' : $name->content;
 			my %symbol
 				= ( name_delimiter => '::', name_elements => [ { prefix => '', name => $package, postfix => '', } ] );
-			my $package_id = sourcetraildb::recordSymbol( encode_json( \%symbol ) );
+			$package_id = sourcetraildb::recordSymbol( encode_json( \%symbol ) );
 			sourcetraildb::recordSymbolDefinitionKind( $package_id, $sourcetraildb::DEFINITION_EXPLICIT );
 			sourcetraildb::recordSymbolKind( $package_id, $sourcetraildb::SYMBOL_PACKAGE );
 			my $next_token = $name->next_token;
