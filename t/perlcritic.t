@@ -9,7 +9,7 @@ plan skip_all => 'Test::Perl::Critic not installed' unless eval {
 	Test::Perl::Critic->import( -severity => 3, -exclude => qw(ProhibitVersionStrings) );
 };
 
-plan tests => 6;
+plan tests => 7;
 Test::Perl::Critic::all_critic_ok(qw( _version.pm indexer.pm run.pl t ));
 
 1;
