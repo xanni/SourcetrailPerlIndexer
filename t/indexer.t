@@ -150,4 +150,63 @@ is_deeply( [ sort keys %symbols ], [qw(main test1 test2 test3 test4 test5)], 're
 is_deeply( \@symbols,    \@expect,      'require and use definitions' );
 is_deeply( \@references, \@expect_refs, 'require and use references' );
 
+# sub NAME;			                     # A "forward" declaration.
+# sub NAME(PROTO);		                 #  ditto, but with prototypes
+# sub NAME : ATTRS;		                 #  with attributes
+# sub NAME(PROTO) : ATTRS;	             #  with attributes and prototypes
+# sub NAME BLOCK		                 # A declaration and a definition.
+# sub NAME(PROTO) BLOCK                  #  ditto, but with prototypes
+# sub NAME : ATTRS BLOCK	             #  with attributes
+# sub NAME(PROTO) : ATTRS BLOCK          #  with prototypes and attributes
+# sub NAME(SIG) BLOCK                    # with signature
+# sub NAME :ATTRS (SIG) BLOCK            # with signature, attributes
+# sub NAME :prototype(PROTO) (SIG) BLOCK # with signature, prototype
+
+@symbols = %symbols = ();
+$source = <<'CODE';
+sub test1;
+sub test2();
+sub test3 : attr1() : attr2;
+sub test4() : attr1() : attr2;
+sub test5 {}
+sub test6() {}
+sub test7 : attr1() : attr2 {}
+sub test8() : attr1() : attr2 {}
+sub test9($arg1) {}
+sub testa :attr1() :attr2 ($arg2) {}
+sub testb :prototype() ($arg3) {}
+CODE
+
+# Anonymous subs (closures)
+# sub BLOCK;		                     # no proto
+# sub (PROTO) BLOCK;	                 # with proto
+# sub : ATTRS BLOCK;	                 # with attributes
+# sub (PROTO) : ATTRS BLOCK;             # with proto and attributes
+# sub (SIG) BLOCK;                       # with signature
+# sub : ATTRS (SIG) BLOCK;                # with signature, attributes
+
+@symbols = %symbols = ();
+$source = <<'CODE';
+sub {};
+sub () {};
+sub : attr1() : attr2 {};
+sub () : attr1() : attr2 {};
+sub ($arg1) {};
+sub : attr1() : attr2 ($arg2) {};
+CODE
+
+# subroutine calls
+# NAME(LIST);	   # & is optional with parentheses.
+# NAME LIST;	   # Parentheses optional if predeclared/imported.
+# &NAME(LIST);     # Circumvent prototypes.
+# &NAME;	       # Makes current @_ visible to called subroutine.
+
+@symbols = %symbols = ();
+$source = <<'CODE';
+mysub();
+mysub;
+&mysub();
+&mysub;
+CODE
+
 1;

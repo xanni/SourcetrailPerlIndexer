@@ -39,6 +39,18 @@ sub encode_symbol {
 	return encode_json( \%symbol );
 } ## end sub encode_symbol
 
+sub index_call {
+	my ($node) = @_;
+
+	my $call_id = recordSymbol( encode_symbol( name => $node->content ) );
+	recordSymbolKind( $call_id, $SYMBOL_FUNCTION );
+	my $reference_id = recordReference( $package_id || $main_id, $call_id, $REFERENCE_CALL );
+	recordReferenceLocation( $reference_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
+		$node->column_number + length( $node->content ) - 1 );
+
+	return;
+} ## end sub index_call
+
 sub index_global_variables {
 	my ($node) = @_;
 
@@ -140,20 +152,44 @@ sub index_statements {
 		my $class = $child->class;
 		if ( $class eq 'PPI::Statement::Include' )  { index_include($child);   next; }
 		if ( $class eq 'PPI::Statement::Package' )  { index_package($child);   next; }
+		if ( $class eq 'PPI::Statement::Sub' )      { index_sub($child);       next; }
 		if ( $class eq 'PPI::Statement::Variable' ) { index_variables($child); next; }
 		if ( $class eq 'PPI::Token::Symbol' )       { index_symbol($child);    next; }
+		if ( $class eq 'PPI::Token::Word' )         { index_call($child);      next; }
+
 		index_statements($child) unless $class =~ m/^PPI::Token/x;
 	} ## end foreach my $child ( $node->schildren )
 
 	return;
 } ## end sub index_statements
 
+sub index_sub {
+	my ($node) = @_;
+
+	my $name = $node->schild(1);
+
+	if ( $name->class eq 'PPI::Token::Word' ) {
+		my $sub_id = recordSymbol( encode_symbol( name => $name->content ) );
+		recordSymbolDefinitionKind( $sub_id, $DEFINITION_EXPLICIT );
+		recordSymbolKind( $sub_id, $SYMBOL_FUNCTION );
+		recordSymbolLocation( $sub_id, $file_id, $name->line_number, $name->column_number, $name->line_number,
+			$name->column_number + length( $name->content ) - 1 );
+	} ## end if ( $name->class eq 'PPI::Token::Word' )
+
+	while ( $node = $node->snext_sibling ) {
+		index_statements($node);
+	}
+
+	return;
+} ## end sub index_sub
+
 sub index_symbol {
 	my ($node) = @_;
 
 	my ( $sigil, $name ) = $node->content =~ qr/ ([\W]+) (.+) /x;
 	my $symbol_id = recordSymbol( encode_symbol( prefix => $sigil, name => $name ) );
-	my $reference_id = recordReference( $package_id || $main_id, $symbol_id, $REFERENCE_USAGE );
+	recordSymbolKind( $symbol_id, $SYMBOL_FUNCTION ) if $sigil eq '&';
+	my $reference_id = recordReference( $file_id, $symbol_id, $REFERENCE_USAGE );
 	recordReferenceLocation( $reference_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
 		$node->column_number + length( $node->content ) - 1 );
 
