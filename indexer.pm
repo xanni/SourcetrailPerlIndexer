@@ -69,8 +69,8 @@ sub index_include {
 
 	my $name_id = recordSymbol( encode_symbol( name => $name->content ) );
 	recordSymbolKind( $name_id, $SYMBOL_PACKAGE );
-	recordReference( $package_id || $main_id, $name_id, $kind );
-	recordReferenceLocation( $name_id, $file_id, $name->line_number, $name->column_number, $name->line_number,
+	my $reference_id = recordReference( $package_id || $main_id, $name_id, $kind );
+	recordReferenceLocation( $reference_id, $file_id, $name->line_number, $name->column_number, $name->line_number,
 		$name->column_number + length( $name->content ) - 1 );
 
 	return;
@@ -153,8 +153,8 @@ sub index_symbol {
 
 	my ( $sigil, $name ) = $node->content =~ qr/ ([\W]+) (.+) /x;
 	my $symbol_id = recordSymbol( encode_symbol( prefix => $sigil, name => $name ) );
-	recordReference( $package_id || $main_id, $symbol_id, $REFERENCE_USAGE );
-	recordReferenceLocation( $symbol_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
+	my $reference_id = recordReference( $package_id || $main_id, $symbol_id, $REFERENCE_USAGE );
+	recordReferenceLocation( $reference_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
 		$node->column_number + length( $node->content ) - 1 );
 
 	return;
