@@ -45,6 +45,11 @@ sub index_call {
 	my ($node) = @_;
 
 	my $symbol = $node->content;
+	if ( $symbol eq 'sub' ) {    # Anonymous sub definition
+		my $next = $node->snext_sibling;
+		return if $next && ( $next->class eq 'PPI::Structure::Block' || $next->class eq 'PPI::Token::Prototype' );
+	}
+
 	$symbol = "${package}::$symbol" unless $symbol =~ m/::/x;
 	my $call_id = recordSymbol( encode_symbol( name => $symbol ) );
 	recordSymbolKind( $call_id, $SYMBOL_FUNCTION );
@@ -113,6 +118,10 @@ sub index_local_variables {
 		$node->column_number + length( $node->content ) - 1 );
 	$locals{ $node->content } = $symbol_id;
 
+	while ( $node = $node->snext_sibling ) {
+		index_statements($node);
+	}
+
 	return;
 } ## end sub index_local_variables
 
@@ -158,13 +167,17 @@ sub index_source_file {
 sub index_statements {
 	my ($node) = @_;
 
+	Readonly my %DISPATCH => (
+		'PPI::Statement::Include'  => \&index_include,
+		'PPI::Statement::Package'  => \&index_package,
+		'PPI::Statement::Sub'      => \&index_sub,
+		'PPI::Statement::Variable' => \&index_variables,
+		'PPI::Token::Symbol'       => \&index_symbol,
+		'PPI::Token::Word'         => \&index_call,
+	);
+
 	my $class = $node->class;
-	if    ( $class eq 'PPI::Statement::Include' )  { index_include($node) }
-	elsif ( $class eq 'PPI::Statement::Package' )  { index_package($node) }
-	elsif ( $class eq 'PPI::Statement::Sub' )      { index_sub($node) }
-	elsif ( $class eq 'PPI::Statement::Variable' ) { index_variables($node) }
-	elsif ( $class eq 'PPI::Token::Symbol' )       { index_symbol($node) }
-	elsif ( $class eq 'PPI::Token::Word' )         { index_call($node) }
+	if ( $DISPATCH{$class} ) { $DISPATCH{$class}->($node) }
 	elsif ( $class !~ m/^PPI::Token/x ) {
 		index_statements($_) foreach ( $node->schildren );
 	}
@@ -207,9 +220,18 @@ sub index_symbol {
 	return if $sigil eq '*';
 
 	$name = "${package}::$name" unless $name =~ m/::/x;
-	my $symbol_id = recordSymbol( encode_symbol( prefix => $sigil, name => $name ) );
-	recordSymbolKind( $symbol_id, $SYMBOL_FUNCTION ) if $sigil eq '&';
-	my $reference_id = recordReference( $file_id, $symbol_id, $REFERENCE_USAGE );
+	my $ref_kind = $REFERENCE_USAGE;
+	my $symbol_id;
+	if ( $sigil ne '&' ) {
+		$symbol_id = recordSymbol( encode_symbol( prefix => $sigil, name => $name ) );
+	}
+	else {
+		$symbol_id = recordSymbol( encode_symbol( name => $name ) );
+		recordSymbolKind( $symbol_id, $SYMBOL_FUNCTION );
+		$ref_kind = $REFERENCE_CALL;
+	}
+
+	my $reference_id = recordReference( $file_id, $symbol_id, $ref_kind );
 	recordReferenceLocation( $reference_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
 		$node->column_number + length( $node->content ) - 1 );
 
