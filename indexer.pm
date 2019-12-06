@@ -45,9 +45,17 @@ sub index_call {
 	my ($node) = @_;
 
 	my $symbol = $node->content;
-	if ( $symbol eq 'sub' ) {    # Anonymous sub definition
+	if ( $symbol eq 'my' ) {    # Misparsed local variable definition
+		Readonly my %VALID =>
+			( map { $_ => 1 } qw(PPI::Statement::Expression PPI::Structure::List PPI::Token::Symbol) );
 		my $next = $node->snext_sibling;
-		return if $next && ( $next->class eq 'PPI::Structure::Block' || $next->class eq 'PPI::Token::Prototype' );
+		return index_local_variables($next) if $next && $VALID{ $next->class };
+	} ## end if ( $symbol eq 'my' )
+
+	if ( $symbol eq 'sub' ) {    # Anonymous sub definition
+		Readonly my %VALID => ( map { $_ => 1 } qw(PPI::Structure::Block PPI::Token::Prototype) );
+		my $next = $node->snext_sibling;
+		return index_statements($next) if $next && $VALID{ $next->class };
 	}
 
 	$symbol = "${package}::$symbol" unless $symbol =~ m/::/x;
