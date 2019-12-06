@@ -9,7 +9,7 @@ use JSON;
 use Mock::Quick;
 use Test::More tests => 8;
 
-use lib File::Spec->catfile($FindBin::Bin, '..');
+use lib File::Spec->catfile( $FindBin::Bin, '..' );
 
 our ( $VERSION, $SOURCETRAIL_DB_VERSION );
 
@@ -26,7 +26,8 @@ ok( $SOURCETRAIL_DB_VERSION, '$SOURCETRAIL_DB_VERSION exported' );
 my %expect = ( name_delimiter => '::', name_elements => [ { prefix => '', name => 'test', postfix => '' } ] );
 is_deeply( decode_json( indexer::encode_symbol( prefix => '', name => 'test', postfix => '' ) ),
 	\%expect, 'encode_symbol name' );
-$expect{name_elements} = [ map { prefix => 'pre', name => $_, postfix => 'post' }, qw(test class) ];
+$expect{name_elements}
+	= [ { prefix => '', name => 'test', postfix => '' }, { prefix => 'pre', name => 'class', postfix => 'post' } ];
 is_deeply( decode_json( indexer::encode_symbol( prefix => 'pre', name => 'test::class', postfix => 'post' ) ),
 	\%expect, 'encode_symbol complex' );
 

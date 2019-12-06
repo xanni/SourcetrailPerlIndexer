@@ -25,15 +25,17 @@ Readonly my %PRAGMAS => map { $_ => 1 }
 	fields filetest if integer less lib locale more open ops overload overloading parent re sigtrap sort strict subs
 	threads threads::shared utf8 vars vmsish warnings warnings::register);
 
-my ( $file_id, $main_id, $package, $package_id );
+my ( $file_id, $package, $package_id );
 
 sub encode_symbol {
-	my %args   = @_;
-	my %symbol = (
+	my %args    = @_;
+	my @package = split( '::', $args{name} );
+	my $name    = pop(@package);
+	my %symbol  = (
 		name_delimiter => '::',
 		name_elements  => [
-			map { prefix => $args{prefix} // '', name => $_, postfix => $args{postfix} // '', },
-			split( '::', $args{name} )
+			( map { prefix => '', name => $_, postfix => '', }, @package ),
+			{ prefix => $args{prefix} // '',, name => $name, postfix => $args{postfix} // '', }
 		]
 	);
 	return encode_json( \%symbol );
@@ -42,9 +44,11 @@ sub encode_symbol {
 sub index_call {
 	my ($node) = @_;
 
-	my $call_id = recordSymbol( encode_symbol( name => $node->content ) );
+	my $symbol = $node->content;
+	$symbol = "${package}::$symbol" unless $symbol =~ m/::/x;
+	my $call_id = recordSymbol( encode_symbol( name => $symbol ) );
 	recordSymbolKind( $call_id, $SYMBOL_FUNCTION );
-	my $reference_id = recordReference( $package_id || $main_id, $call_id, $REFERENCE_CALL );
+	my $reference_id = recordReference( $package_id, $call_id, $REFERENCE_CALL );
 	recordReferenceLocation( $reference_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
 		$node->column_number + length( $node->content ) - 1 );
 
@@ -63,11 +67,16 @@ sub index_global_variables {
 	return unless $node->class eq 'PPI::Token::Symbol';
 
 	my ( $sigil, $name ) = $node->content =~ qr/ ([\W]+) (.+) /x;
+	$name = "${package}::$name" unless $name =~ m/::/x;
 	my $symbol_id = recordSymbol( encode_symbol( prefix => $sigil, name => $name ) );
 	recordSymbolDefinitionKind( $symbol_id, $DEFINITION_EXPLICIT );
 	recordSymbolKind( $symbol_id, $SYMBOL_GLOBAL_VARIABLE );
 	recordSymbolLocation( $symbol_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
 		$node->column_number + length( $node->content ) - 1 );
+
+	while ( $node = $node->snext_sibling ) {
+		index_statements($node);
+	}
 
 	return;
 } ## end sub index_global_variables
@@ -81,7 +90,7 @@ sub index_include {
 
 	my $name_id = recordSymbol( encode_symbol( name => $name->content ) );
 	recordSymbolKind( $name_id, $SYMBOL_PACKAGE );
-	my $reference_id = recordReference( $package_id || $main_id, $name_id, $kind );
+	my $reference_id = recordReference( $package_id, $name_id, $kind );
 	recordReferenceLocation( $reference_id, $file_id, $name->line_number, $name->column_number, $name->line_number,
 		$name->column_number + length( $name->content ) - 1 );
 
@@ -137,8 +146,9 @@ sub index_source_file {
 
 #	PPI::Dumper->new( $document, whitespace => 0 )->print();
 
-	$main_id = recordSymbol( encode_symbol( name => 'main' ) );
-	recordSymbolKind( $main_id, $SYMBOL_PACKAGE );
+	$package = 'main';
+	$package_id = recordSymbol( encode_symbol( name => $package ) );
+	recordSymbolKind( $package_id, $SYMBOL_PACKAGE );
 
 	index_statements($document);
 
@@ -148,17 +158,16 @@ sub index_source_file {
 sub index_statements {
 	my ($node) = @_;
 
-	foreach my $child ( $node->schildren ) {
-		my $class = $child->class;
-		if ( $class eq 'PPI::Statement::Include' )  { index_include($child);   next; }
-		if ( $class eq 'PPI::Statement::Package' )  { index_package($child);   next; }
-		if ( $class eq 'PPI::Statement::Sub' )      { index_sub($child);       next; }
-		if ( $class eq 'PPI::Statement::Variable' ) { index_variables($child); next; }
-		if ( $class eq 'PPI::Token::Symbol' )       { index_symbol($child);    next; }
-		if ( $class eq 'PPI::Token::Word' )         { index_call($child);      next; }
-
-		index_statements($child) unless $class =~ m/^PPI::Token/x;
-	} ## end foreach my $child ( $node->schildren )
+	my $class = $node->class;
+	if    ( $class eq 'PPI::Statement::Include' )  { index_include($node) }
+	elsif ( $class eq 'PPI::Statement::Package' )  { index_package($node) }
+	elsif ( $class eq 'PPI::Statement::Sub' )      { index_sub($node) }
+	elsif ( $class eq 'PPI::Statement::Variable' ) { index_variables($node) }
+	elsif ( $class eq 'PPI::Token::Symbol' )       { index_symbol($node) }
+	elsif ( $class eq 'PPI::Token::Word' )         { index_call($node) }
+	elsif ( $class !~ m/^PPI::Token/x ) {
+		index_statements($_) foreach ( $node->schildren );
+	}
 
 	return;
 } ## end sub index_statements
@@ -166,15 +175,16 @@ sub index_statements {
 sub index_sub {
 	my ($node) = @_;
 
-	my $name = $node->schild(1);
-
-	if ( $name->class eq 'PPI::Token::Word' ) {
-		my $sub_id = recordSymbol( encode_symbol( name => $name->content ) );
+	$node = $node->schild(1);
+	if ( $node->class eq 'PPI::Token::Word' ) {
+		my $symbol = $node->content;
+		$symbol = "${package}::$symbol" unless $symbol =~ m/::/x;
+		my $sub_id = recordSymbol( encode_symbol( name => $symbol ) );
 		recordSymbolDefinitionKind( $sub_id, $DEFINITION_EXPLICIT );
 		recordSymbolKind( $sub_id, $SYMBOL_FUNCTION );
-		recordSymbolLocation( $sub_id, $file_id, $name->line_number, $name->column_number, $name->line_number,
-			$name->column_number + length( $name->content ) - 1 );
-	} ## end if ( $name->class eq 'PPI::Token::Word' )
+		recordSymbolLocation( $sub_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
+			$node->column_number + length( $node->content ) - 1 );
+	} ## end if ( $node->class eq 'PPI::Token::Word' )
 
 	while ( $node = $node->snext_sibling ) {
 		index_statements($node);
@@ -187,6 +197,7 @@ sub index_symbol {
 	my ($node) = @_;
 
 	my ( $sigil, $name ) = $node->content =~ qr/ ([\W]+) (.+) /x;
+	$name = "${package}::$name" unless $name =~ m/::/x;
 	my $symbol_id = recordSymbol( encode_symbol( prefix => $sigil, name => $name ) );
 	recordSymbolKind( $symbol_id, $SYMBOL_FUNCTION ) if $sigil eq '&';
 	my $reference_id = recordReference( $file_id, $symbol_id, $REFERENCE_USAGE );
