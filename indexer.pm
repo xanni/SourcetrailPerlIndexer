@@ -25,7 +25,7 @@ Readonly my %PRAGMAS => map { $_ => 1 }
 	fields filetest if integer less lib locale more open ops overload overloading parent re sigtrap sort strict subs
 	threads threads::shared utf8 vars vmsish warnings warnings::register);
 
-my ( $file_id, $package, $package_id );
+my ( $file_id, %locals, $package, $package_id );
 
 sub encode_symbol {
 	my %args    = @_;
@@ -108,10 +108,10 @@ sub index_local_variables {
 	return unless $node->class eq 'PPI::Token::Symbol';
 
 	my ( $sigil, $name ) = $node->content =~ qr/ ([\W]+) (.+) /x;
-	my $symbol_id = recordSymbol( encode_symbol( prefix => $sigil, name => $name ) );
-	recordSymbolDefinitionKind( $symbol_id, $DEFINITION_EXPLICIT );
-	recordSymbolLocation( $symbol_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
+	my $symbol_id = recordLocalSymbol( encode_symbol( prefix => $sigil, name => $name ) );
+	recordLocalSymbolLocation( $symbol_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
 		$node->column_number + length( $node->content ) - 1 );
+	$locals{ $node->content } = $symbol_id;
 
 	return;
 } ## end sub index_local_variables
@@ -196,7 +196,16 @@ sub index_sub {
 sub index_symbol {
 	my ($node) = @_;
 
+	my $local_id = $locals{ $node->content };
+	if ($local_id) {
+		recordLocalSymbolLocation( $local_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
+			$node->column_number + length( $node->content ) - 1 );
+		return;
+	}
+
 	my ( $sigil, $name ) = $node->content =~ qr/ ([\W]+) (.+) /x;
+	return if $sigil eq '*';
+
 	$name = "${package}::$name" unless $name =~ m/::/x;
 	my $symbol_id = recordSymbol( encode_symbol( prefix => $sigil, name => $name ) );
 	recordSymbolKind( $symbol_id, $SYMBOL_FUNCTION ) if $sigil eq '&';
