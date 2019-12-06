@@ -8,11 +8,12 @@ use FindBin;
 use JSON;
 use Mock::Quick;
 use Test::Exit;
-use Test::More tests => 12;
+use Test::More tests => 17;
 
 use lib File::Spec->catfile( $FindBin::Bin, '..' );
 use indexer qw(:all);
 
+my $CALL     = $indexer::REFERENCE_CALL;
 my $EXPLICIT = $indexer::DEFINITION_EXPLICIT;
 my $FUNCTION = $indexer::SYMBOL_FUNCTION;
 my $IMPLICIT = $indexer::DEFINITION_IMPLICIT;
@@ -183,7 +184,7 @@ CODE
 	( map { D => $EXPLICIT, F => 1, K => $FUNCTION, LB => $_, CB => 5, LE => $_, CE => 9, }, ( 1 .. 10 ) ),  # test 1..a
 	{ D => $IMPLICIT, },                                                                                     # arg2
 	{ D => $EXPLICIT, F => 1, K => $FUNCTION, LB => 11, CB => 5, LE => 11, CE => 9, },                       # test b
-	{ D => $IMPLICIT, }                                                                                      # arg3
+	{ D => $IMPLICIT, },                                                                                     # arg3
 );
 index_source_file( \$source );
 is_deeply(
@@ -199,17 +200,24 @@ is_deeply( \@symbols, \@expect, 'sub definitions' );
 # sub : ATTRS BLOCK;	                 # with attributes
 # sub (PROTO) : ATTRS BLOCK;             # with proto and attributes
 # sub (SIG) BLOCK;                       # with signature
-# sub : ATTRS (SIG) BLOCK;                # with signature, attributes
+# sub : ATTRS (SIG) BLOCK;               # with signature, attributes
 
 @symbols = %symbols = ();
 $source = <<'CODE';
 sub {};
 sub () {};
-sub : attr1() : attr2 {};
+# sub : attr1() : attr2 {};              # PPI wrongly parses "sub :" as a label
 sub () : attr1() : attr2 {};
 sub ($arg1) {};
-sub : attr1() : attr2 ($arg2) {};
+# sub : attr1() : attr2 ($arg2) {};      # PPI wrongly parses "sub :" as a label
 CODE
+
+@expect = (
+	{ D => $IMPLICIT, K => $PACKAGE, },    # main
+);
+index_source_file( \$source );
+is_deeply( [ sort keys %symbols ], [qw(main)], 'anonymous sub symbols' );
+is_deeply( \@symbols, \@expect, 'anonymous sub definitions' );
 
 # subroutine calls
 # NAME(LIST);	   # & is optional with parentheses.
@@ -217,12 +225,24 @@ CODE
 # &NAME(LIST);     # Circumvent prototypes.
 # &NAME;	       # Makes current @_ visible to called subroutine.
 
-@symbols = %symbols = ();
+@references = %references = @symbols = %symbols = ();
 $source = <<'CODE';
-mysub();
-mysub;
-&mysub();
-&mysub;
+test1();
+test2;
+&test3();
+&test4;
 CODE
+
+@expect = ( { D => $IMPLICIT, K => $PACKAGE, }, ( { D => $IMPLICIT, K => $FUNCTION, } ) x 4 );
+@expect_refs = (
+	{ K => $CALL, F => 1, LB => 1, CB => 1, LE => 1, CE => 5, },    # test1
+	{ K => $CALL, F => 1, LB => 2, CB => 1, LE => 2, CE => 5, },    # test2
+	{ K => $CALL, F => 1, LB => 3, CB => 1, LE => 3, CE => 6, },    # test4
+	{ K => $CALL, F => 1, LB => 4, CB => 1, LE => 4, CE => 6, },    # test5
+);
+index_source_file( \$source );
+is_deeply( [ sort keys %symbols ], [ qw(main), map { "main::test$_" } ( 1 .. 4 ) ], 'sub references' );
+is_deeply( \@symbols, \@expect, 'sub references definitions' );
+is_deeply( \@references, \@expect_refs, 'require and use references' );
 
 1;
