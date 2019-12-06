@@ -8,12 +8,13 @@ use FindBin;
 use JSON;
 use Mock::Quick;
 use Test::Exit;
-use Test::More tests => 10;
+use Test::More tests => 12;
 
 use lib File::Spec->catfile( $FindBin::Bin, '..' );
 use indexer qw(:all);
 
 my $EXPLICIT = $indexer::DEFINITION_EXPLICIT;
+my $FUNCTION = $indexer::SYMBOL_FUNCTION;
 my $IMPLICIT = $indexer::DEFINITION_IMPLICIT;
 my $IMPORT   = $indexer::REFERENCE_IMPORT;
 my $INCLUDE  = $indexer::REFERENCE_INCLUDE;
@@ -176,6 +177,21 @@ sub test9($arg1) {}
 sub testa :attr1() :attr2 ($arg2) {}
 sub testb :prototype() ($arg3) {}
 CODE
+
+@expect = (
+	{ D => $IMPLICIT, K => $PACKAGE, },    # main
+	( map { D => $EXPLICIT, F => 1, K => $FUNCTION, LB => $_, CB => 5, LE => $_, CE => 9, }, ( 1 .. 10 ) ),  # test 1..a
+	{ D => $IMPLICIT, },                                                                                     # arg2
+	{ D => $EXPLICIT, F => 1, K => $FUNCTION, LB => 11, CB => 5, LE => 11, CE => 9, },                       # test b
+	{ D => $IMPLICIT, }                                                                                      # arg3
+);
+index_source_file( \$source );
+is_deeply(
+	[ sort keys %symbols ],
+	[ qw(main main::arg2 main::arg3), map { "main::test$_" } ( 1 .. 9, 'a' .. 'b' ) ],
+	'sub symbols'
+);
+is_deeply( \@symbols, \@expect, 'sub definitions' );
 
 # Anonymous subs (closures)
 # sub BLOCK;		                     # no proto
