@@ -20,10 +20,32 @@ BEGIN { $indexer::{$_} = $sourcetraildb::{$_} foreach ( keys %sourcetraildb:: );
 our @EXPORT_OK = qw(index_source_file is_sourcetraildb_version_compatible);
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 
+Readonly my %KEYWORDS => map { $_ => 1 }
+	qw(if elsif else unless given when default while for foreach do until continue defined undef
+	eq ne gt lt ge le cmp not and or xor bless ref BEGIN CHECK INIT END UNITCHECK my our local state return last next
+	redo goto break chop chomp chr crypt index rindex lc lcfirst length ord pack sprintf substr fc uc ucfirst
+	pos quotemeta split study abs atan2 cos exp hex int log oct rand sin sqrt srand
+	splice unshift shift push pop join reverse grep map sort unpack delete each exists keys values
+	syscall	dbmopen dbmclose binmode close closedir eof fileno getc lstat print printf
+	read readdir readline readpipe rewinddir say select stat tell telldir write fcntl flock ioctl
+	open opendir seek seekdir sysopen sysread sysseek syswrite truncate vec
+	chdir chmod chown chroot glob link mkdir readlink rename rmdir symlink umask utime
+	-r -w -x -o -R -W -X -O -e -z -s -f -d -l -p -S -b -c -t -u -g -k -T -B -M -A -C
+	caller die dump eval exit wantarray evalbytes require import unimport use no package
+	alarm exec fork getpgrp getppid getpriority kill pipe setpgrp setpriority sleep system times wait waitpid
+	accept bind connect getpeername getsockname getsockopt listen recv send setsockopt shutdown socket socketpair
+	msgctl msgget msgrcv msgsnd semctl semget semop shmctl shmget shmread shmwrite
+	endhostent endnetent endprotoent endservent gethostent getnetent getprotoent getservent
+	gethostbyaddr gethostbyname getnetbyaddr getnetbyname protobyname protobynumber servbyname servbyport
+	sethostent setnetent setprotoent setservent getpwuid getpwnam getgrgid getgrnam getlogin
+	endpwent endgrent getpwent getgrent setpwent setgrent gmtime localtime time
+	warn format formline reset scalar prototype lock tie tied untie
+	__DATA__ __END__ __FILE__ __LINE__ __PACKAGE__ CORE sub q qq qr qw qx s tr y);
+
 Readonly my %PRAGMAS => map { $_ => 1 }
-	qw(attributes autodie autouse base bigint bignum bigrat blib bytes charnames constant diagnostics encoding feature
-	fields filetest if integer less lib locale more open ops overload overloading parent re sigtrap sort strict subs
-	threads threads::shared utf8 vars vmsish warnings warnings::register);
+	qw(attributes attrs autodie autouse base bigint bignum bigrat blib bytes charnames constant diagnostics
+	encoding encoding::warnings feature fields filetest if integer less lib locale mro open ops overload overloading
+	parent re sigtrap sort strict subs threads threads::shared utf8 vars version vmsish warnings warnings::register);
 
 my ( $file_id, %locals, $package, $package_id );
 
@@ -52,11 +74,7 @@ sub index_call {
 		return index_local_variables($next) if $next && $VALID{ $next->class };
 	} ## end if ( $symbol eq 'my' )
 
-	if ( $symbol eq 'sub' ) {    # Anonymous sub definition
-		Readonly my %VALID => ( map { $_ => 1 } qw(PPI::Structure::Block PPI::Token::Prototype) );
-		my $next = $node->snext_sibling;
-		return index_statements($next) if $next && $VALID{ $next->class };
-	}
+	return if $symbol eq 'sub' || $KEYWORDS{$symbol};    # Anonymous sub definition or keyword
 
 	$symbol = "${package}::$symbol" unless $symbol =~ m/::/x;
 	my $call_id = recordSymbol( encode_symbol( name => $symbol ) );
