@@ -74,9 +74,24 @@ sub index_call {
 		return index_local_variables($next) if $next && $VALID{ $next->class };
 	} ## end if ( $symbol eq 'my' )
 
+	if ( $symbol eq 'Readonly' ) {
+		my $next = $node->snext_sibling;
+		if ( $next && $next->class eq 'PPI::Token::Word' ) {
+			$node = $next;
+			$next = $node->snext_sibling;
+			return $node->content eq 'our' ? index_global_variables($next) : index_local_variables($next);
+		}
+	} ## end if ( $symbol eq 'Readonly' )
+
 	return if $symbol eq 'sub' || $KEYWORDS{$symbol};    # Anonymous sub definition or keyword
 
-	$symbol = "${package}::$symbol" unless $symbol =~ m/::/x;
+	if ( $symbol !~ m/::/x ) {
+		my $next = $node->snext_sibling;
+		return if $next && $next->content eq '=>';
+
+		$symbol = "${package}::$symbol";
+	} ## end if ( $symbol !~ m/::/x )
+
 	my $call_id = recordSymbol( encode_symbol( name => $symbol ) );
 	recordSymbolKind( $call_id, $SYMBOL_FUNCTION );
 	my $reference_id = recordReference( $package_id, $call_id, $REFERENCE_CALL );
@@ -128,13 +143,8 @@ sub index_include {
 	return;
 } ## end sub index_include
 
-sub index_local_variables {
+sub _index_local_variable {
 	my ($node) = @_;
-
-	if ( $node->class eq 'PPI::Structure::List' || $node->class eq 'PPI::Statement::Expression' ) {
-		foreach my $child ( $node->schildren() ) { index_local_variables($child); }
-		return;
-	}
 
 	return unless $node->class eq 'PPI::Token::Symbol';
 
@@ -144,6 +154,21 @@ sub index_local_variables {
 		$node->column_number + length( $node->content ) - 1 );
 	$locals{ $node->content } = $symbol_id;
 
+	return;
+} ## end sub _index_local_variable
+
+sub index_local_variables {
+	my ($node) = @_;
+
+	if ( $node->class eq 'PPI::Structure::List' ) {
+		$node = $node->schild(0);
+		if ( $node && $node->class eq 'PPI::Statement::Expression' ) {
+			foreach my $child ( $node->schildren() ) { _index_local_variable($child); }
+		}
+		return;
+	} ## end if ( $node->class eq 'PPI::Structure::List')
+
+	_index_local_variable($node);
 	while ( $node = $node->snext_sibling ) {
 		index_statements($node);
 	}
@@ -235,14 +260,20 @@ sub index_sub {
 sub index_symbol {
 	my ($node) = @_;
 
-	my $local_id = $locals{ $node->content };
+	my ( $sigil, $name ) = $node->content =~ qr/ ([\W]+) (.+) /x;
+	my $next = $node->snext_sibling;
+	if ( $next && $next->class eq 'PPI::Structure::Subscript' ) {
+		$sigil = '@' if $next->content =~ m/^\[/x;
+		$sigil = '%' if $next->content =~ m/^\{/x;
+	}
+
+	my $local_id = $locals{"$sigil$name"};
 	if ($local_id) {
 		recordLocalSymbolLocation( $local_id, $file_id, $node->line_number, $node->column_number, $node->line_number,
-			$node->column_number + length( $node->content ) - 1 );
+			$node->column_number + length("$sigil$name") - 1 );
 		return;
 	}
 
-	my ( $sigil, $name ) = $node->content =~ qr/ ([\W]+) (.+) /x;
 	return if $sigil eq '*';
 
 	$name = "${package}::$name" unless $name =~ m/::/x;
