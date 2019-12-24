@@ -8,63 +8,63 @@ use FindBin;
 use JSON;
 use Mock::Quick;
 use Test::Exit;
-use Test::More tests => 17;
+use Test::More tests => 20;
 
 use lib File::Spec->catfile( $FindBin::Bin, '..' );
 use indexer qw(:all);
 
-my $CALL     = $indexer::REFERENCE_CALL;
-my $EXPLICIT = $indexer::DEFINITION_EXPLICIT;
-my $FUNCTION = $indexer::SYMBOL_FUNCTION;
-my $IMPLICIT = $indexer::DEFINITION_IMPLICIT;
-my $IMPORT   = $indexer::REFERENCE_IMPORT;
-my $INCLUDE  = $indexer::REFERENCE_INCLUDE;
-my $PACKAGE  = $indexer::SYMBOL_PACKAGE;
+my $CALL       = $indexer::REFERENCE_CALL;
+my $EXPLICIT   = $indexer::DEFINITION_EXPLICIT;
+my $FUNCTION   = $indexer::SYMBOL_FUNCTION;
+my $GLOBAL_VAR = $indexer::SYMBOL_GLOBAL_VARIABLE;
+my $IMPLICIT   = $indexer::DEFINITION_IMPLICIT;
+my $IMPORT     = $indexer::REFERENCE_IMPORT;
+my $INCLUDE    = $indexer::REFERENCE_INCLUDE;
+my $PACKAGE    = $indexer::SYMBOL_PACKAGE;
+my $USAGE      = $indexer::REFERENCE_USAGE;
 
 my ( $file, $language, @references, %references, @symbols, %symbols );
 
 sub decode_symbol {
-	my $symbol_ref = decode_json(shift);
-	my $name_ref   = $symbol_ref->{name_elements};
-	return join( '::', map { $name_ref->[$_]{name} } keys @{$name_ref} );
+    my $symbol_ref = decode_json(shift);
+    my $name_ref   = $symbol_ref->{name_elements};
+    return $name_ref->[-1]{prefix} . join( '::', map { $name_ref->[$_]{name} } keys @{$name_ref} );
 }
 
 sub record_reference {
-	my ( $from, $to, $kind ) = @_;
+    my ( $from, $to, $kind ) = @_;
 
-	if ( !exists $references{$from}{$to} ) {
-		$references{$from}{$to} = scalar @references;
-		push @references, { K => $kind };
-	}
+    push @{ $references{$from}{$to} }, scalar @references;
+    push @references, { K => $kind };
 
-	return $references{$from}{$to};
+    return $references{$from}{$to}[-1];
 } ## end sub record_reference
 
 sub record_reference_location {
-	my $i = shift;
+    my $i = shift;
 
-	$references[$i] = { %{ $references[$i] }, F => shift, LB => shift, CB => shift, LE => shift, CE => shift };
-	return;
+    $references[$i] = { %{ $references[$i] }, F => shift, LB => shift, CB => shift, LE => shift, CE => shift };
+    return;
 } ## end sub record_reference_location
 
 sub record_symbol {
-	my ($key) = @_;
+    my ($key) = @_;
 
-	$key = decode_symbol($key);
-	if ( !exists $symbols{$key} ) {
-		$symbols{$key} = scalar @symbols;
-		push @symbols, { D => $IMPLICIT };
-	}
+    $key = decode_symbol($key);
+    if ( !exists $symbols{$key} ) {
+        $symbols{$key} = scalar @symbols;
+        push @symbols, { D => $IMPLICIT };
+    }
 
-	return $symbols{$key};
+    return $symbols{$key};
 } ## end sub record_symbol
 
 sub record_symbol_location {
-	my $i = shift;
+    my $i = shift;
 
-	$symbols[$i] = { %{ $symbols[$i] }, F => shift, LB => shift, CB => shift, LE => shift, CE => shift };
+    $symbols[$i] = { %{ $symbols[$i] }, F => shift, LB => shift, CB => shift, LE => shift, CE => shift };
 
-	return;
+    return;
 } ## end sub record_symbol_location
 
 # ---------- Tests start here ----------
@@ -73,13 +73,13 @@ is( exit_code { index_source_file('') }, 2, 'no source' );
 $PPI::Document::errstr = '';    ## no critic (ProhibitPackageVars)
 
 my $control = qtakeover(
-	indexer => ( recordFile => sub { $file = shift; return 1 }, recordFileLanguage => sub { $language = $_[1] } ),
-	recordSymbol               => \&record_symbol,
-	recordSymbolDefinitionKind => sub { $symbols[ $_[0] ]{D} = $_[1] },
-	recordSymbolKind           => sub { my ( $id, $kind ) = @_; $symbols[$id]{K} = $kind },
-	recordSymbolLocation       => \&record_symbol_location,
-	recordReference            => \&record_reference,
-	recordReferenceLocation    => \&record_reference_location,
+    indexer => ( recordFile => sub { $file = shift; return 1 }, recordFileLanguage => sub { $language = $_[1] } ),
+    recordSymbol               => \&record_symbol,
+    recordSymbolDefinitionKind => sub { $symbols[ $_[0] ]{D} = $_[1] },
+    recordSymbolKind           => sub { my ( $id, $kind ) = @_; $symbols[$id]{K} = $kind },
+    recordSymbolLocation       => \&record_symbol_location,
+    recordReference            => \&record_reference,
+    recordReferenceLocation    => \&record_reference_location,
 );
 
 my $source = '';
@@ -105,12 +105,12 @@ package main;
 CODE
 
 my @expect = (
-	{ D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 6, CB => 9,  LE => 6, CE => 12 },    # main
-	{ D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 1, CB => 9,  LE => 1, CE => 13 },    # test1
-	{ D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 2, CB => 9,  LE => 2, CE => 13 },    # test2
-	{ D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 3, CB => 9,  LE => 3, CE => 13 },    # test3
-	{ D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 4, CB => 9,  LE => 4, CE => 13 },    # test4
-	{ D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 5, CB => 11, LE => 5, CE => 15 },    # test5
+    { D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 6, CB => 9,  LE => 6, CE => 12 },    # main
+    { D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 1, CB => 9,  LE => 1, CE => 13 },    # test1
+    { D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 2, CB => 9,  LE => 2, CE => 13 },    # test2
+    { D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 3, CB => 9,  LE => 3, CE => 13 },    # test3
+    { D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 4, CB => 9,  LE => 4, CE => 13 },    # test4
+    { D => $EXPLICIT, F => 1, K => $PACKAGE, LB => 5, CB => 11, LE => 5, CE => 15 },    # test5
 );
 index_source_file( \$source );
 is_deeply( [ sort keys %symbols ], [qw(main test1 test2 test3 test4 test5)], 'package symbols' );
@@ -141,11 +141,11 @@ CODE
 
 @expect = ( ( { D => $IMPLICIT, K => $PACKAGE, } ) x 6 );
 my @expect_refs = (
-	{ K => $INCLUDE, F => 1, LB => 2, CB => 9, LE => 2, CE => 13, },    # test1
-	{ K => $IMPORT,  F => 1, LB => 5, CB => 5, LE => 5, CE => 9, },     # test2
-	{ K => $IMPORT,  F => 1, LB => 6, CB => 5, LE => 6, CE => 9, },     # test3
-	{ K => $IMPORT,  F => 1, LB => 7, CB => 5, LE => 7, CE => 9, },     # test4
-	{ K => $IMPORT,  F => 1, LB => 8, CB => 5, LE => 8, CE => 9, },     # test5
+    { K => $INCLUDE, F => 1, LB => 2, CB => 9, LE => 2, CE => 13, },    # test1
+    { K => $IMPORT,  F => 1, LB => 5, CB => 5, LE => 5, CE => 9, },     # test2
+    { K => $IMPORT,  F => 1, LB => 6, CB => 5, LE => 6, CE => 9, },     # test3
+    { K => $IMPORT,  F => 1, LB => 7, CB => 5, LE => 7, CE => 9, },     # test4
+    { K => $IMPORT,  F => 1, LB => 8, CB => 5, LE => 8, CE => 9, },     # test5
 );
 index_source_file( \$source );
 is_deeply( [ sort keys %symbols ], [qw(main test1 test2 test3 test4 test5)], 'require and use symbols' );
@@ -180,17 +180,17 @@ sub testb :prototype() ($arg3) {}
 CODE
 
 @expect = (
-	{ D => $IMPLICIT, K => $PACKAGE, },    # main
-	( map { D => $EXPLICIT, F => 1, K => $FUNCTION, LB => $_, CB => 5, LE => $_, CE => 9, }, ( 1 .. 10 ) ),  # test 1..a
-	{ D => $IMPLICIT, },                                                                                     # arg2
-	{ D => $EXPLICIT, F => 1, K => $FUNCTION, LB => 11, CB => 5, LE => 11, CE => 9, },                       # test b
-	{ D => $IMPLICIT, },                                                                                     # arg3
+    { D => $IMPLICIT, K => $PACKAGE, },    # main
+    ( map { D => $EXPLICIT, F => 1, K => $FUNCTION, LB => $_, CB => 5, LE => $_, CE => 9, }, ( 1 .. 10 ) ),  # test 1..a
+    { D => $IMPLICIT, },                                                                                     # arg2
+    { D => $EXPLICIT, F => 1, K => $FUNCTION, LB => 11, CB => 5, LE => 11, CE => 9, },                       # test b
+    { D => $IMPLICIT, },                                                                                     # arg3
 );
 index_source_file( \$source );
 is_deeply(
-	[ sort keys %symbols ],
-	[ qw(main main::arg2 main::arg3), map { "main::test$_" } ( 1 .. 9, 'a' .. 'b' ) ],
-	'sub symbols'
+    [ sort keys %symbols ],
+    [ qw($main::arg2 $main::arg3 main), map { "main::test$_" } ( 1 .. 9, 'a' .. 'b' ) ],
+    'sub symbols'
 );
 is_deeply( \@symbols, \@expect, 'sub definitions' );
 
@@ -213,7 +213,7 @@ sub ($arg1) {};
 CODE
 
 @expect = (
-	{ D => $IMPLICIT, K => $PACKAGE, },    # main
+    { D => $IMPLICIT, K => $PACKAGE, },    # main
 );
 index_source_file( \$source );
 is_deeply( [ sort keys %symbols ], [qw(main)], 'anonymous sub symbols' );
@@ -235,14 +235,62 @@ CODE
 
 @expect = ( { D => $IMPLICIT, K => $PACKAGE, }, ( { D => $IMPLICIT, K => $FUNCTION, } ) x 4 );
 @expect_refs = (
-	{ K => $CALL, F => 1, LB => 1, CB => 1, LE => 1, CE => 5, },    # test1
-	{ K => $CALL, F => 1, LB => 2, CB => 1, LE => 2, CE => 5, },    # test2
-	{ K => $CALL, F => 1, LB => 3, CB => 1, LE => 3, CE => 6, },    # test4
-	{ K => $CALL, F => 1, LB => 4, CB => 1, LE => 4, CE => 6, },    # test5
+    { K => $CALL, F => 1, LB => 1, CB => 1, LE => 1, CE => 5, },    # test1
+    { K => $CALL, F => 1, LB => 2, CB => 1, LE => 2, CE => 5, },    # test2
+    { K => $CALL, F => 1, LB => 3, CB => 1, LE => 3, CE => 6, },    # test4
+    { K => $CALL, F => 1, LB => 4, CB => 1, LE => 4, CE => 6, },    # test5
 );
 index_source_file( \$source );
 is_deeply( [ sort keys %symbols ], [ qw(main), map { "main::test$_" } ( 1 .. 4 ) ], 'sub references' );
-is_deeply( \@symbols, \@expect, 'sub references definitions' );
+is_deeply( \@symbols,    \@expect,      'sub references definitions' );
 is_deeply( \@references, \@expect_refs, 'require and use references' );
+
+# global variables
+# our VARLIST
+# our TYPE VARLIST
+# our VARLIST : ATTRS
+# our TYPE VARLIST : ATTRS
+
+@references = %references = @symbols = %symbols = ();
+$source = <<'CODE';
+$test = 0;  $main::test;  $test;
+package p1;  $p1::test = 1;  $p1::test;
+our $test;  $test;
+package p2;  our $test;  $test;
+our ($test1, $test2);
+# package Class;  use fields qw(test test4);  our Class $test;
+our $test3 : attr3;
+# our Class $test4 : attr4;
+CODE
+
+@expect = (
+    { D => $IMPLICIT, K => $PACKAGE, },                                                     # main
+    { D => $EXPLICIT, K => $GLOBAL_VAR, F => 1, LB => 1, CB => 1, LE => 1, CE => 5, },      # $main::test
+    { D => $EXPLICIT, K => $PACKAGE, F => 1, LB => 2, CB => 9, LE => 2, CE => 10, },        # p1
+    { D => $EXPLICIT, K => $GLOBAL_VAR, F => 1, LB => 2, CB => 14, LE => 2, CE => 22, },    # $p1::test
+    { D => $EXPLICIT, K => $PACKAGE, F => 1, LB => 4, CB => 9, LE => 4, CE => 10, },        # p2
+    { D => $EXPLICIT, K => $GLOBAL_VAR, F => 1, LB => 4, CB => 18, LE => 4, CE => 22, },    # $p2::test
+    { D => $EXPLICIT, K => $GLOBAL_VAR, F => 1, LB => 5, CB => 6, LE => 5, CE => 11, },     # $p2::test1
+    { D => $EXPLICIT, K => $GLOBAL_VAR, F => 1, LB => 5, CB => 14, LE => 5, CE => 19, },    # $p2::test2
+    { D => $EXPLICIT, K => $GLOBAL_VAR, F => 1, LB => 7, CB => 5, LE => 7, CE => 10, },     # $p2::test3
+    { D => $IMPLICIT, K => $FUNCTION, },                                                    # p2::attr3
+);
+@expect_refs = (
+    { K => $USAGE, F => 1, LB => 1, CB => 13, LE => 1, CE => 23, },                         # $main::test
+    { K => $USAGE, F => 1, LB => 1, CB => 27, LE => 1, CE => 31, },                         # $main::test
+    { K => $USAGE, F => 1, LB => 2, CB => 30, LE => 2, CE => 38, },                         # $p1::test
+    { K => $USAGE, F => 1, LB => 3, CB => 5,  LE => 3, CE => 9, },                          # $p1::test
+    { K => $USAGE, F => 1, LB => 3, CB => 13, LE => 3, CE => 17, },                         # $p1::test
+    { K => $USAGE, F => 1, LB => 4, CB => 26, LE => 4, CE => 30, },                         # $p2::test
+    { K => $CALL,  F => 1, LB => 7, CB => 14, LE => 7, CE => 18, },                         # p2::attr3
+);
+index_source_file( \$source );
+is_deeply(
+    [ sort keys %symbols ],
+    [qw($main::test $p1::test $p2::test $p2::test1 $p2::test2 $p2::test3 main p1 p2 p2::attr3)],
+    'global variables'
+);
+is_deeply( \@symbols, \@expect, 'global variable definitions' );
+is_deeply( \@references, \@expect_refs, 'global variable references' );
 
 1;
