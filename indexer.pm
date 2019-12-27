@@ -76,11 +76,15 @@ sub index_call {
 
     if ( $symbol eq 'Readonly' ) {
         my $next = $node->snext_sibling;
-        if ( $next && $next->class eq 'PPI::Token::Word' ) {
-            $node = $next;
-            $next = $node->snext_sibling;
-            return $node->content eq 'our' ? index_global_variables($next) : index_local_variables($next);
-        }
+        if ($next) {
+            return index_global_variables($next) if $next->class eq 'PPI::Token::Symbol';
+
+            if ( $next->class eq 'PPI::Token::Word' ) {
+                $node = $next;
+                $next = $next->snext_sibling;
+                return $node->content eq 'our' ? index_global_variables($next) : index_local_variables($next);
+            }
+        } ## end if ($next)
     } ## end if ( $symbol eq 'Readonly' )
 
     return if $symbol eq 'sub' || $KEYWORDS{$symbol};    # Anonymous sub definition or keyword
@@ -104,15 +108,16 @@ sub index_call {
 sub index_global_variables {
     my ($node) = @_;
 
-    if ( $node->class eq 'PPI::Structure::List' ) {
-        $node = $node->schild(0);
-        if ( $node && $node->class eq 'PPI::Statement::Expression' ) {
-            foreach my $child ( $node->schildren() ) { _index_global_variable($child); }
+    if ( $node->class ne 'PPI::Structure::List' ) {
+        _index_global_variable($node);
+    }
+    else {
+        my $expr = $node->schild(0);
+        if ( $expr && $expr->class eq 'PPI::Statement::Expression' ) {
+            foreach my $child ( $expr->schildren() ) { _index_global_variable($child); }
         }
-        return;
-    } ## end if ( $node->class eq 'PPI::Structure::List')
+    } ## end else [ if ( $node->class ne 'PPI::Structure::List')]
 
-    _index_global_variable($node);
     while ( $node = $node->snext_sibling ) {
         index_statements($node);
     }
@@ -182,18 +187,30 @@ sub _index_local_variable {
     return;
 } ## end sub _index_local_variable
 
+sub index_list {
+    my ($node) = @_;
+
+    my $next = $node->snext_sibling;
+    return index_global_variables($node) if ( $next && $next->content eq '=' );
+
+    index_statements($_) foreach ( $node->schildren );
+
+    return;
+} ## end sub index_list
+
 sub index_local_variables {
     my ($node) = @_;
 
-    if ( $node->class eq 'PPI::Structure::List' ) {
-        $node = $node->schild(0);
-        if ( $node && $node->class eq 'PPI::Statement::Expression' ) {
-            foreach my $child ( $node->schildren() ) { _index_local_variable($child); }
+    if ( $node->class ne 'PPI::Structure::List' ) {
+        _index_local_variable($node);
+    }
+    else {
+        my $expr = $node->schild(0);
+        if ( $expr && $expr->class eq 'PPI::Statement::Expression' ) {
+            foreach my $child ( $expr->schildren() ) { _index_local_variable($child); }
         }
-        return;
-    } ## end if ( $node->class eq 'PPI::Structure::List')
+    } ## end else [ if ( $node->class ne 'PPI::Structure::List')]
 
-    _index_local_variable($node);
     while ( $node = $node->snext_sibling ) {
         index_statements($node);
     }
@@ -248,12 +265,16 @@ sub index_statements {
         'PPI::Statement::Package'  => \&index_package,
         'PPI::Statement::Sub'      => \&index_sub,
         'PPI::Statement::Variable' => \&index_variables,
+        'PPI::Structure::List'     => \&index_list,
         'PPI::Token::Symbol'       => \&index_symbol,
         'PPI::Token::Word'         => \&index_call,
     );
 
     my $class = $node->class;
     if ( $DISPATCH{$class} ) { $DISPATCH{$class}->($node) }
+    elsif ( $class eq 'PPI::Statement' ) {
+        index_statements( $node->schild(0) );
+    }
     elsif ( $class !~ m/^PPI::Token/x ) {
         index_statements($_) foreach ( $node->schildren );
     }
